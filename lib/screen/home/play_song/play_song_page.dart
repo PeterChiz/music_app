@@ -9,6 +9,7 @@ import 'package:music_app/utils/constants/sizes.dart';
 
 import '../../../data/model/song.dart';
 import 'audio_play_manager.dart';
+import 'media_button_control.dart';
 
 class PlaySongPage extends StatefulWidget {
   const PlaySongPage({
@@ -155,7 +156,7 @@ class _PlaySongPageState extends State<PlaySongPage>
                   bottom: 0,
                 ),
                 child: _progressBar(),
-              ),
+              ), //5
               const SizedBox(
                 height: SizesApp.spaceBtwItems,
               ),
@@ -165,7 +166,7 @@ class _PlaySongPageState extends State<PlaySongPage>
                   bottom: 16,
                 ),
                 child: _mediaButtons(),
-              ),
+              ), //6
             ],
           ),
         ),
@@ -185,10 +186,11 @@ class _PlaySongPageState extends State<PlaySongPage>
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           MediaButtonControl(
-              function: _setShuffle,
-              icon: Icons.shuffle,
-              size: 24,
-              color: _getShuffleColor()),
+            function: _setShuffle,
+            icon: Icons.shuffle,
+            size: 24,
+            color: _getShuffleColor(),
+          ),
           MediaButtonControl(
               function: _setPrevSong,
               icon: Icons.skip_previous,
@@ -383,35 +385,5 @@ class _PlaySongPageState extends State<PlaySongPage>
     setState(() {
       _audioPlayManager.player.setLoopMode(_loopMode);
     });
-  }
-}
-
-class MediaButtonControl extends StatefulWidget {
-  const MediaButtonControl({
-    super.key,
-    required this.function,
-    required this.icon,
-    required this.size,
-    required this.color,
-  });
-
-  final void Function()? function;
-  final IconData icon;
-  final double? size;
-  final Color? color;
-
-  @override
-  State<MediaButtonControl> createState() => _MediaButtonControlState();
-}
-
-class _MediaButtonControlState extends State<MediaButtonControl> {
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      onPressed: widget.function,
-      icon: Icon(widget.icon),
-      iconSize: widget.size,
-      color: widget.color ?? Theme.of(context).colorScheme.primary,
-    );
   }
 }
