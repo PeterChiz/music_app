@@ -2,15 +2,19 @@ import 'package:just_audio/just_audio.dart';
 import 'package:rxdart/rxdart.dart';
 
 class AudioPlayManager {
-  String songUrl;
+  factory AudioPlayManager() => _instance;
 
-  AudioPlayManager({required this.songUrl});
+  AudioPlayManager._internal();
+
+  static final AudioPlayManager _instance = AudioPlayManager._internal();
 
   final player = AudioPlayer();
 
+  String songUrl = '';
+
   Stream<DurationState>? durationState;
 
-  void init() {
+  void prepare({bool isNewSong = false}) {
     durationState = Rx.combineLatest2<Duration, PlaybackEvent, DurationState>(
       player.positionStream,
       player.playbackEventStream,
@@ -20,7 +24,18 @@ class AudioPlayManager {
         total: playbackEvent.duration,
       ),
     );
-    player.setUrl(songUrl);
+    if (isNewSong) {
+      player.setUrl(songUrl);
+    }
+  }
+
+  void updateSongUrl(String url) {
+    songUrl = url;
+    prepare();
+  }
+
+  void dispose() {
+    player.dispose();
   }
 }
 

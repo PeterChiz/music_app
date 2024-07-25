@@ -1,6 +1,10 @@
+import 'dart:math';
+
 import 'package:audio_video_progress_bar/audio_video_progress_bar.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:music_app/utils/constants/colors.dart';
 import 'package:music_app/utils/constants/sizes.dart';
 
 import '../../../data/model/song.dart';
@@ -24,13 +28,26 @@ class _PlaySongPageState extends State<PlaySongPage>
     with SingleTickerProviderStateMixin {
   late AnimationController _imageAnimationController;
   late AudioPlayManager _audioPlayManager;
+  late int _selectedItemIndex;
+  late Song _song;
+  double _currentAnimationPosition = 0.0;
+  bool _isShuffle = false;
+  late LoopMode _loopMode;
 
   @override
   void initState() {
+    _song = widget.playingSong;
     _imageAnimationController = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 12000));
-    _audioPlayManager = AudioPlayManager(songUrl: widget.playingSong.source);
-    _audioPlayManager.init();
+    _audioPlayManager = AudioPlayManager();
+    if (_audioPlayManager.songUrl.compareTo(_song.source) != 0) {
+      _audioPlayManager.updateSongUrl(_song.source);
+      _audioPlayManager.prepare(isNewSong: true);
+    } else {
+      _audioPlayManager.prepare(isNewSong: false);
+    }
+    _selectedItemIndex = widget.songs.indexOf(widget.playingSong);
+    _loopMode = LoopMode.off;
     super.initState();
   }
 
@@ -55,7 +72,10 @@ class _PlaySongPageState extends State<PlaySongPage>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(widget.playingSong.album),
+              const SizedBox(
+                height: SizesApp.spaceMaxSections,
+              ),
+              Text(_song.album),
               const SizedBox(
                 height: SizesApp.spaceBtwItems,
               ),
@@ -71,7 +91,7 @@ class _PlaySongPageState extends State<PlaySongPage>
                   borderRadius: BorderRadius.circular(radius),
                   child: FadeInImage.assetNetwork(
                     placeholder: 'assets/images/music_loading.png',
-                    image: widget.playingSong.image,
+                    image: _song.image,
                     width: screenWidth - delta,
                     height: screenWidth - delta,
                     imageErrorBuilder: (context, error, stackTrade) {
@@ -98,12 +118,12 @@ class _PlaySongPageState extends State<PlaySongPage>
                       ),
                       Column(
                         children: [
-                          Text(widget.playingSong.title),
+                          Text(_song.title),
                           const SizedBox(
                             height: SizesApp.spaceSongItems,
                           ),
                           Text(
-                            widget.playingSong.artist,
+                            _song.artist,
                             style: Theme.of(context)
                                 .textTheme
                                 .bodyMedium!
@@ -132,13 +152,16 @@ class _PlaySongPageState extends State<PlaySongPage>
                   top: 32,
                   left: 24,
                   right: 24,
-                  bottom: 16,
+                  bottom: 0,
                 ),
                 child: _progressBar(),
               ),
+              const SizedBox(
+                height: SizesApp.spaceBtwItems,
+              ),
               Padding(
                 padding: const EdgeInsets.only(
-                  top: 16,
+                  top: 0,
                   bottom: 16,
                 ),
                 child: _mediaButtons(),
@@ -150,16 +173,39 @@ class _PlaySongPageState extends State<PlaySongPage>
     );
   }
 
-  Widget _mediaButtons(){
-    return const SizedBox(
+  @override
+  void dispose() {
+    _imageAnimationController.dispose();
+    super.dispose();
+  }
+
+  Widget _mediaButtons() {
+    return SizedBox(
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          MediaButtonControl(function: null, icon: Icons.shuffle, size: 24, color: Colors.deepPurple),
-          MediaButtonControl(function: null, icon: Icons.skip_previous, size: 36, color: Colors.deepPurple),
-          MediaButtonControl(function: null, icon: Icons.play_arrow_sharp, size: 48, color: Colors.deepPurple),
-          MediaButtonControl(function: null, icon: Icons.skip_next, size: 36, color: Colors.deepPurple),
-          MediaButtonControl(function: null, icon: Icons.repeat, size: 24, color: Colors.deepPurple),
+          MediaButtonControl(
+              function: _setShuffle,
+              icon: Icons.shuffle,
+              size: 24,
+              color: _getShuffleColor()),
+          MediaButtonControl(
+              function: _setPrevSong,
+              icon: Icons.skip_previous,
+              size: 36,
+              color: ColorsApp.spotify),
+          _playButton(),
+          MediaButtonControl(
+              function: _setNextSong,
+              icon: Icons.skip_next,
+              size: 36,
+              color: ColorsApp.spotify),
+          MediaButtonControl(
+            function: _setupRepeatOption,
+            icon: _repeatingIcon(),
+            size: 24,
+            color: _getRepeatingIconColor(),
+          ),
         ],
       ),
     );
@@ -173,18 +219,181 @@ class _PlaySongPageState extends State<PlaySongPage>
           final progress = durationState?.progress ?? Duration.zero;
           final buffered = durationState?.buffered ?? Duration.zero;
           final total = durationState?.total ?? Duration.zero;
-          return ProgressBar(progress: progress, total: total);
+          return ProgressBar(
+            progress: progress,
+            total: total,
+            buffered: buffered,
+            onSeek: _audioPlayManager.player.seek,
+            barHeight: 5.0,
+            barCapShape: BarCapShape.round,
+            baseBarColor: Colors.grey.withOpacity(0.3),
+            progressBarColor: Colors.greenAccent,
+            bufferedBarColor: Colors.grey.withOpacity(0.3),
+            thumbColor: ColorsApp.spotify,
+            thumbGlowColor: Colors.greenAccent,
+            thumbRadius: 10.0,
+          );
         }); //5
+  }
+
+  StreamBuilder<PlayerState> _playButton() {
+    return StreamBuilder(
+        stream: _audioPlayManager.player.playerStateStream,
+        builder: (context, snapshot) {
+          final playState = snapshot.data;
+          final processingState = playState?.processingState;
+          final playing = playState?.playing;
+          if (processingState == ProcessingState.loading ||
+              processingState == ProcessingState.buffering) {
+            _pauseRotationAnimation();
+            return Container(
+              margin: const EdgeInsets.all(8),
+              width: 48,
+              height: 48,
+              child: const CircularProgressIndicator(),
+            );
+          } else if (playing != true) {
+            return MediaButtonControl(
+                function: () {
+                  _audioPlayManager.player.play();
+                },
+                icon: Icons.play_arrow,
+                size: 48,
+                color: ColorsApp.spotify);
+          } else if (processingState != ProcessingState.completed) {
+            _playRotationAnimation();
+            return MediaButtonControl(
+                function: () {
+                  _audioPlayManager.player.pause();
+                  _pauseRotationAnimation();
+                },
+                icon: Icons.pause,
+                size: 48,
+                color: ColorsApp.spotify);
+          } else {
+            if (processingState == ProcessingState.completed) {
+              _stopRotationAnimation();
+              _resetRotationAnimation();
+            }
+            return MediaButtonControl(
+              function: () {
+                _audioPlayManager.player.seek(Duration.zero);
+                _resetRotationAnimation();
+                _playRotationAnimation();
+              },
+              icon: Icons.replay,
+              size: 48,
+              color: ColorsApp.spotify,
+            );
+          }
+        });
+  }
+
+  void _setNextSong() {
+    if (_isShuffle) {
+      var random = Random();
+      _selectedItemIndex = random.nextInt(widget.songs.length);
+    } else if (_selectedItemIndex < widget.songs.length - 1) {
+      ++_selectedItemIndex;
+    } else if (_loopMode == LoopMode.all &&
+        _selectedItemIndex == widget.songs.length - 1) {
+      _selectedItemIndex = 0;
+    }
+    if (_selectedItemIndex >= widget.songs.length) {
+      _selectedItemIndex = _selectedItemIndex % widget.songs.length;
+    }
+    final nextSong = widget.songs[_selectedItemIndex];
+    _audioPlayManager.updateSongUrl(nextSong.source);
+    _resetRotationAnimation();
+    setState(() {
+      _song = nextSong;
+    });
+  }
+
+  void _setPrevSong() {
+    if (_isShuffle) {
+      var random = Random();
+      _selectedItemIndex = random.nextInt(widget.songs.length);
+    } else if (_selectedItemIndex > 0) {
+      --_selectedItemIndex;
+    } else if (_loopMode == LoopMode.all && _selectedItemIndex == 0) {
+      _selectedItemIndex = widget.songs.length - 1;
+    }
+    if (_selectedItemIndex < 0) {
+      _selectedItemIndex = (-1 * _selectedItemIndex) % widget.songs.length;
+    }
+    final nextSong = widget.songs[_selectedItemIndex];
+    _audioPlayManager.updateSongUrl(nextSong.source);
+    _resetRotationAnimation();
+    setState(() {
+      _song = nextSong;
+    });
+  }
+
+  void _playRotationAnimation() {
+    _imageAnimationController.forward(from: _currentAnimationPosition);
+    _imageAnimationController.repeat();
+  }
+
+  void _pauseRotationAnimation() {
+    _stopRotationAnimation();
+    _currentAnimationPosition = _imageAnimationController.value;
+  }
+
+  void _stopRotationAnimation() {
+    _imageAnimationController.stop();
+  }
+
+  void _resetRotationAnimation() {
+    _currentAnimationPosition = 0.0;
+    _imageAnimationController.value = _currentAnimationPosition;
+  }
+
+  void _setShuffle() {
+    setState(() {
+      _isShuffle = !_isShuffle;
+    });
+  }
+
+  Color? _getShuffleColor() {
+    return _isShuffle ? ColorsApp.spotify : Colors.grey;
+  }
+
+  IconData _repeatingIcon() {
+    return switch (_loopMode) {
+      LoopMode.one => Icons.repeat_one,
+      LoopMode.all => Icons.repeat_on,
+      _ => Icons.repeat,
+    };
+  }
+
+  Color? _getRepeatingIconColor() {
+    return _loopMode == LoopMode.off ? Colors.grey : ColorsApp.spotify;
+  }
+
+  void _setupRepeatOption() {
+    if (_loopMode == LoopMode.off) {
+      _loopMode = LoopMode.one;
+    } else if (_loopMode == LoopMode.one) {
+      _loopMode = LoopMode.all;
+    } else {
+      _loopMode = LoopMode.off;
+    }
+
+    setState(() {
+      _audioPlayManager.player.setLoopMode(_loopMode);
+    });
   }
 }
 
 class MediaButtonControl extends StatefulWidget {
-  const MediaButtonControl(
-      {super.key,
-      required this.function,
-      required this.icon,
-      required this.size,
-      required this.color});
+  const MediaButtonControl({
+    super.key,
+    required this.function,
+    required this.icon,
+    required this.size,
+    required this.color,
+  });
 
   final void Function()? function;
   final IconData icon;

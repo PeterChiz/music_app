@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:music_app/screen/home/play_song/audio_play_manager.dart';
 import 'package:music_app/screen/home/play_song/play_song.dart';
 import 'package:music_app/screen/home/view_model.dart';
 import 'package:music_app/utils/constants/colors.dart';
@@ -36,6 +37,7 @@ class _HomeScreenPageState extends State<HomeScreenPage> {
   @override
   void dispose() {
     _viewModelApp.songStream.close();
+    AudioPlayManager().dispose();
     super.dispose();
   }
 
